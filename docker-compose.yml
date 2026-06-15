@@ -1,7 +1,21 @@
 services:
-  api:
-    build: .
-    ports:
-      - "8000:8000"
-    env_file: .env
-    restart: unless-stopped
+  aconcaia-dash:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    env_file:
+      - .env
+    networks:
+      - web
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=web"
+      - "traefik.http.routers.aconcaia-dash.rule=Host(`aconcaia-dash.werevops.com`)"
+      - "traefik.http.routers.aconcaia-dash.entrypoints=web"
+      - "traefik.http.services.aconcaia-dash.loadbalancer.server.port=8000"
+      - "traefik.http.routers.aconcaia-dash.service=aconcaia-dash"
+
+networks:
+  web:
+    external: true

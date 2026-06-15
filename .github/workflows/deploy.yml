@@ -1,0 +1,53 @@
+name: Deploy Aconcaia Dash
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v3
+
+      - name: Configurar chave SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Enviar arquivos para o servidor (rsync)
+        run: |
+          rsync -avz -e "ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no" \
+            --exclude '.git' \
+            --exclude '.github' \
+            --exclude '__pycache__' \
+            --exclude '**/__pycache__' \
+            --exclude '*.pyc' \
+            --exclude '*.log' \
+            ./ \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/opt/aconcaia-dash/
+
+      - name: Upload .env
+        run: |
+          echo "$ENV_FILE" > .env
+          rsync -avz -e "ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no" .env ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/opt/aconcaia-dash/.env
+          rm -f .env
+        env:
+          ENV_FILE: ${{ secrets.ENV_FILE }}
+
+      - name: Deploy via Docker Compose
+        run: |
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+            "cd /opt/aconcaia-dash && (docker network inspect web >/dev/null 2>&1 || docker network create web) && docker compose up -d --build"
+
+      - name: Verificar logs do container
+        run: |
+          sleep 15
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+            "cd /opt/aconcaia-dash && \
+             echo '--- STATUS ---' && docker compose ps && \
+             echo '--- LOGS API ---' && docker compose logs --tail=30"
