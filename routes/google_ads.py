@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 
-from google_ads.customer_match import run_upload
+from google_ads.customer_match import run_upload, run_upload_from_hubspot_list
 
 router = APIRouter(tags=["Google Ads"])
 
@@ -30,5 +30,25 @@ def customer_match(body: CustomerMatchBody):
         criterio=body.criterio,
         customer_id=customer_id,
         list_id=body.list_id,
+        dry_run=body.dry_run,
+    )
+
+
+class CustomerMatchFromListBody(BaseModel):
+    hubspot_list_id: int
+    google_ads_list_id: str
+    customer_id: Optional[str] = None
+    dry_run: bool = False
+
+
+@router.post("/customer-match-from-list", dependencies=[Depends(require_api_key)])
+def customer_match_from_list(body: CustomerMatchFromListBody):
+    customer_id = body.customer_id or os.environ.get("GOOGLE_ADS_CUSTOMER_ID", "")
+    if not customer_id:
+        raise HTTPException(status_code=400, detail="customer_id obrigatorio")
+    return run_upload_from_hubspot_list(
+        hubspot_list_id=body.hubspot_list_id,
+        google_ads_list_id=body.google_ads_list_id,
+        customer_id=customer_id,
         dry_run=body.dry_run,
     )

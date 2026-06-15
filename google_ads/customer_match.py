@@ -242,6 +242,42 @@ def _upload_emails(customer_id, list_id, emails, dry_run=False):
 # Entrypoint principal
 # ---------------------------------------------------------------------------
 
+def run_upload_from_hubspot_list(hubspot_list_id: int, google_ads_list_id: str, customer_id: str, dry_run: bool = False) -> dict:
+    hs_token = os.environ.get("HUBSPOT_TOKEN_ACONCAIA")
+    if not hs_token:
+        raise EnvironmentError("HUBSPOT_TOKEN_ACONCAIA nao definido")
+
+    import urllib.request as _req
+    emails = []
+    vid_offset = None
+    while True:
+        url = f"https://api.hubapi.com/contacts/v1/lists/{hubspot_list_id}/contacts/all?count=100&property=email"
+        if vid_offset:
+            url += f"&vidOffset={vid_offset}"
+        req = _req.Request(url, headers={"Authorization": f"Bearer {hs_token}"})
+        with _req.urlopen(req) as r:
+            data = json.loads(r.read())
+        for c in data.get("contacts", []):
+            email = (c.get("properties", {}).get("email", {}).get("value", "") or "").lower().strip()
+            if email and "@" in email:
+                emails.append(email)
+        if not data.get("has-more"):
+            break
+        vid_offset = data.get("vid-offset")
+    emails = list(set(emails))
+
+    if not emails:
+        return {"hubspot_list_id": hubspot_list_id, "google_ads_list_id": google_ads_list_id, "emails_encontrados": 0, "enviados": 0}
+
+    result = _upload_emails(customer_id, google_ads_list_id, emails, dry_run=dry_run)
+    return {
+        "hubspot_list_id": hubspot_list_id,
+        "google_ads_list_id": google_ads_list_id,
+        "emails_encontrados": len(emails),
+        **result,
+    }
+
+
 def run_upload(criterio: str, customer_id: str, list_id: str | None = None, dry_run: bool = False) -> dict:
     if criterio not in CRITERIO_NAMES:
         raise ValueError(f"Criterio invalido: {criterio}. Opcoes: {list(CRITERIO_NAMES)}")
